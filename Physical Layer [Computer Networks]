@@ -1,0 +1,83 @@
+clc; 
+close all;
+
+%% Transmitter Side
+% Reading image
+image = imread("image.jpg");
+
+% Defining parameters
+SNR_range = -10:2:20; % SNR range (dB)
+num_frames = 1; % Number of frames to transmit
+
+% Initializing arrays to store BER values
+BER = zeros(size(SNR_range));
+
+for SNR_idx = 1:length(SNR_range)
+    SNR_dB = SNR_range(SNR_idx);
+    SNR_linear = 10^(SNR_dB / 10);
+    
+    % Initializing error count
+    num_errors = 0; 
+    
+    % Looping through frames
+    for frame_idx = 1:num_frames
+        % Converting frame to grayscale
+        gray_frame = rgb2gray(image);
+        
+        % Sampling the frame
+        sampled_frame = imresize(gray_frame, [270, 480]);
+        
+        % Normalizing pixel values to the range [0, 15]
+        normalized_frame = uint8((double(sampled_frame) / 255) * 15);
+        
+        % 16-PSK Modulation
+        modulated_symbols = pskmod(normalized_frame(:), 16, pi/16);
+        
+        % Rayleigh Fading Channel Simulation
+        fading_channel = sqrt(SNR_linear/2) * (randn(size(modulated_symbols)) + 1i * randn(size(modulated_symbols)));
+        
+        % Adding AWGN noise
+        noisy_symbols = modulated_symbols + 1/sqrt(2*SNR_linear) * (randn(size(modulated_symbols)) + 1i * randn(size(modulated_symbols)));
+        
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %% Receiver Side
+        % Channel Simulation (Applying fading channel)
+        received_symbols = noisy_symbols .* fading_channel;
+        
+        % Equalization (using Zero Forcing Equalizer)
+        equalized_symbols = received_symbols ./ fading_channel;
+        
+        % 16-PSK Demodulation
+        demodulated_symbols = pskdemod(equalized_symbols, 16, pi/16);
+        
+        % Counting symbol errors
+        num_errors = num_errors + sum(demodulated_symbols ~= normalized_frame(:));
+        
+        % Reshaping received symbols to original frame size
+        received_frame = reshape(demodulated_symbols, size(sampled_frame));
+        
+        % Displaying transmitted and received frames
+        % Transmitted Frame
+        figure;
+        subplot(1, 2, 1);
+        imshow(sampled_frame, []);
+        title('Transmitted Frame');
+        
+        % Received Frame
+        subplot(1, 2, 2);
+        imshow(received_frame, []);
+        title('Received Frame');
+    end
+    
+    % Calculating simulated BER
+    BER(SNR_idx) = num_errors / (num_frames * numel(normalized_frame));
+end
+
+% Plotting BER Vs SNR
+figure;
+semilogy(SNR_range, BER, 'r.-');
+xlabel('SNR (dB)');
+ylabel('Bit Error Rate (BER)');
+title('BER Vs SNR');
+legend('BER');
+grid on;
